@@ -38,77 +38,77 @@ def main(
     out_size: Tuple[int, int] = (112, 112),
     mirror: bool = True,
 ):
-    cap = cv2.VideoCapture(cam_index)
-    det = Haar5ptDetector(
+    camera_capture = cv2.VideoCapture(cam_index)
+    detector = Haar5ptDetector(
         min_size=(70, 70),
         smooth_alpha=0.80,
         debug=True,
     )
-    out_w, out_h = int(out_size[0]), int(out_size[1])
-    blank = np.zeros((out_h, out_w, 3), dtype=np.uint8)
+    output_width, output_height = int(out_size[0]), int(out_size[1])
+    blank_image = np.zeros((output_height, output_width, 3), dtype=np.uint8)
     # Where to save aligned snapshots
-    save_dir = Path("data/debug_aligned")
-    save_dir.mkdir(parents=True, exist_ok=True)
-    last_aligned = blank.copy()
-    fps_t0 = time.time()
-    fps_n = 0
-    fps = 0.0
+    save_directory = Path("data/debug_aligned")
+    save_directory.mkdir(parents=True, exist_ok=True)
+    last_aligned_face = blank_image.copy()
+    fps_start_time = time.time()
+    frame_count = 0
+    frames_per_second = 0.0
     print("align running. Press 'q' to quit, 's' to save aligned face.")
-while True:
-        ok, frame = cap.read()
-        if not ok:
+    while True:
+        success, current_frame = camera_capture.read()
+        if not success:
             break
         if mirror:
-            frame = cv2.flip(frame, 1)
+            current_frame = cv2.flip(current_frame, 1)
         
-        faces = det.detect(frame, max_faces=1)
+        detected_faces = detector.detect(current_frame, max_faces=1)
         
-        vis = frame.copy()
-        aligned = None
+        visualization_frame = current_frame.copy()
+        aligned_face = None
         
-        if faces:
-            f = faces[0]
+        if detected_faces:
+            face = detected_faces[0]
             
             # Draw box + 5 pts
-            cv2.rectangle(vis, (f.x1, f.y1), (f.x2, f.y2), (0, 255, 0), 2)
-            for (x, y) in f.kps.astype(int):
-                cv2.circle(vis, (int(x), int(y)), 3, (0, 255, 0), -1)
+            cv2.rectangle(visualization_frame, (face.x1, face.y1), (face.x2, face.y2), (0, 255, 0), 2)
+            for (x, y) in face.kps.astype(int):
+                cv2.circle(visualization_frame, (int(x), int(y)), 3, (0, 255, 0), -1)
                 
             # Align (this is the whole point)
-            aligned, _M = align_face_5pt(frame, f.kps, out_size=out_size)
+            aligned_face, _M = align_face_5pt(current_frame, face.kps, out_size=out_size)
             
             # Keep last good aligned (so window doesn't go black on brief misses)
-            if aligned is not None and aligned.size:
-                last_aligned = aligned
-            _put_text(vis, "OK (Haar + FaceMesh 5pt)", (10, 30), 0.75, 2)
+            if aligned_face is not None and aligned_face.size:
+                last_aligned_face = aligned_face
+            _put_text(visualization_frame, "OK (Haar + FaceMesh 5pt)", (10, 30), 0.75, 2)
         else:
-            _put_text(vis, "no face", (10, 30), 0.9, 2)
+            _put_text(visualization_frame, "no face", (10, 30), 0.9, 2)
         
         # FPS
-        fps_n += 1
-        dt = time.time() - fps_t0
+        frame_count += 1
+        dt = time.time() - fps_start_time
         if dt >= 1.0:
-            fps = fps_n / dt
-            fps_n = 0
-            fps_t0 = time.time()
+            frames_per_second = frame_count / dt
+            frame_count = 0
+            fps_start_time = time.time()
         
-        _put_text(vis, f"FPS: {fps:.1f}", (10, 60), 0.75, 2)
-        _put_text(vis, f"warp: 5pt -> {out_w}x{out_h}", (10, 90), 0.75, 2)
+        _put_text(visualization_frame, f"FPS: {frames_per_second:.1f}", (10, 60), 0.75, 2)
+        _put_text(visualization_frame, f"warp: 5pt -> {output_width}x{output_height}", (10, 90), 0.75, 2)
         
-        _safe_imshow("align - camera", vis)
-        _safe_imshow("align - aligned", last_aligned)
+        _safe_imshow("align - camera", visualization_frame)
+        _safe_imshow("align - aligned", last_aligned_face)
         
         key = cv2.waitKey(1) & 0xFF
         if key == ord("q"):
             break
         if key == ord("s"):
             ts = int(time.time() * 1000)
-            out_path = save_dir / f"{ts}.jpg"
-            cv2.imwrite(str(out_path), last_aligned)
+            out_path = save_directory / f"{ts}.jpg"
+            cv2.imwrite(str(out_path), last_aligned_face)
             print(f"[align] saved: {out_path}")
             
-        cap.release()
-        cv2.destroyAllWindows()
+    camera_capture.release()
+    cv2.destroyAllWindows()
         
 if __name__ == "__main__":
     main()
